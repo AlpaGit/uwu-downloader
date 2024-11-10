@@ -17,5 +17,5 @@ List of fragments for Unity: "animations/audio/bones/configuration/data/i18n/map
 Fragment "win32_x64" is required if you want to start the game
 
 ## TODO: 
-[x] Check every chunks of a file and only download the modified one, not the whole file
+- [x] Check every chunks of a file and only download the modified one, not the whole file
 
