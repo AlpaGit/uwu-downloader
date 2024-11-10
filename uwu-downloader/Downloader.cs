@@ -36,8 +36,8 @@ public class Downloader
 
     private readonly ManualResetEventSlim _waitHandle = new ManualResetEventSlim(true);
     
-    private readonly SemaphoreSlim _maxChunksSemaphore = new SemaphoreSlim(20, 20);
-    private readonly SemaphoreSlim _maxFilesSemaphore = new SemaphoreSlim(10, 10);
+    private readonly SemaphoreSlim _maxChunksSemaphore = new SemaphoreSlim(1, 1);
+    private readonly SemaphoreSlim _maxFilesSemaphore = new SemaphoreSlim(1, 1);
 
     private volatile int _waitingBytes;
     public async Task DownloadGame(string game, string release, string version, Configuration configuration)
@@ -315,13 +315,7 @@ public class Downloader
             _waitHandle.Wait(_cancellationTokenSource.Token);
 
             // create an empty size of the file
-            var path = Path.Combine(game, file.Name);
-            var dir = Path.GetDirectoryName(path);
-
-            if (!string.IsNullOrEmpty(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
+            var path = Path.Combine(_path, file.Name);
 
             if (System.IO.File.Exists(path))
             {
@@ -585,6 +579,13 @@ public class Downloader
     {
         // save content in the file
         var path = Path.Combine(_path, file.Name);
+        
+        // create the directory if it doesn't exist
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
 
         using var fs = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
         fs.Seek(chunk.Offset, SeekOrigin.Begin);
