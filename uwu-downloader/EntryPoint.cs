@@ -49,7 +49,7 @@ public class EntryPoint
                 
                 foreach (var (game, release, version) in newestVersions)
                 {
-                    await Logger.WebhookInfo($"@everyone New version available of {CapitalizeSpan(game)} ({release}) {version}");
+                    //await Logger.WebhookInfo($"@everyone New version available of {CapitalizeSpan(game)} ({release}) {version}");
                     
                     if (!HandledGames.Contains((game, release)))
                         continue;

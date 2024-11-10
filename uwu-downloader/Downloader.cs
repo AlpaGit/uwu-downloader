@@ -51,7 +51,7 @@ public class Downloader
         }
         
         _path = Path.Combine(Directory.GetCurrentDirectory(), game, release);
-        Directory.CreateDirectory(game);
+        Directory.CreateDirectory(_path);
 
         using var httpClient = new HttpClient();
         var metaFile = await httpClient.GetByteArrayAsync($"https://cytrus.cdn.ankama.com/{game}/releases/{release}/windows/{version}.manifest");

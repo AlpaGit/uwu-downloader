@@ -10,8 +10,16 @@ public static class Logger
     public static void Initialize(Configuration configuration)
     {
         _config = configuration;
+
+        var webhookUrl = _config.Get("WEBHOOK_URL");
         
-        _webhook = new DiscordWebhookClient(_config.Get("WEBHOOK_URL"));
+        if (string.IsNullOrEmpty(webhookUrl))
+        {
+            Logger.Info("No webhook URL provided.");
+            return;
+        }
+        
+        _webhook = new DiscordWebhookClient(webhookUrl);
     }
     
     public static void Info(string message)
