@@ -36,10 +36,14 @@ public class Downloader
 
     private readonly ManualResetEventSlim _waitHandle = new ManualResetEventSlim(true);
     
-    private readonly SemaphoreSlim _maxChunksSemaphore = new SemaphoreSlim(1, 1);
-    private readonly SemaphoreSlim _maxFilesSemaphore = new SemaphoreSlim(1, 1);
+    private readonly SemaphoreSlim _maxChunksSemaphore = new SemaphoreSlim(20, 20);
+    private readonly SemaphoreSlim _maxFilesSemaphore = new SemaphoreSlim(10, 10);
 
-    private volatile int _waitingBytes;
+    private long _waitingBytes;
+    
+    private long _maxSizeToInstall;
+    private long _downloadedSize;
+    private long _installedSize;
     public async Task DownloadGame(string game, string release, string version, Configuration configuration)
     {
         var fragmentsRaw = configuration.Get("FRAGMENTS");
@@ -92,6 +96,8 @@ public class Downloader
                 // ignored
             }
         }
+        
+        Logger.Info($"{game} installed");
     }
 
     private async Task PostDownload()
@@ -150,6 +156,13 @@ public class Downloader
         }
     }
     
+    private void LogCurrentProgress()
+    {
+        Console.Clear();
+        
+        Logger.Info($"Installed {_installedSize}/{_maxSizeToInstall} bytes ({_installedSize * 100 / _maxSizeToInstall}%)");
+    }
+    
     private void SaveFiles()
     {
         while (!_cancellationTokenSource.Token.IsCancellationRequested || !_filesToSave.IsEmpty)
@@ -174,13 +187,14 @@ public class Downloader
                 _downloadedChunks.Add(dataK.Key);
 
                 Interlocked.Add(ref _waitingBytes, -dataK.Value.Length);
-                Logger.Info($"Written {dataK.Value.Length} bytes, {_waitingBytes} bytes remaining");
+                //Logger.Info($"Written {dataK.Value.Length} bytes, {_waitingBytes} bytes remaining");
 
                 if (_waitingBytes < MaxRamUsage)
                 {
                     _waitHandle.Set();
                 }
-
+                
+                LogCurrentProgress();
             }
 
             foreach (var key in processed)
@@ -197,11 +211,17 @@ public class Downloader
 
     private async Task DownloadBundles(string game, List<FragmentT> fragments)
     {
-        foreach (var fragment in fragments)
+        _maxSizeToInstall = 0;
+        
+        var fragmentsToDownload = fragments.Where(x => FragmentToDownload.Contains(x.Name)).ToList();
+        
+        foreach (var file in fragmentsToDownload.SelectMany(fragment => fragment.Files))
         {
-            if (!FragmentToDownload.Contains(fragment.Name))
-                continue;
+            _maxSizeToInstall += file.Size;
+        }
 
+        foreach (var fragment in fragmentsToDownload)
+        {
             await DownloadFragment(game, fragment);
         }
     }
@@ -314,6 +334,8 @@ public class Downloader
         {
             _waitHandle.Wait(_cancellationTokenSource.Token);
 
+            var toDownloadChunks = file.Chunks.ToList();
+            
             // create an empty size of the file
             var path = Path.Combine(_path, file.Name);
 
@@ -329,12 +351,52 @@ public class Downloader
                     // we need to convert the byte to sbyte
                     if (ByteArrayToHexString(hash) == Downloader.ByteArrayToHexString(file.Hash))
                     {
+                        Interlocked.Add(ref _installedSize, content.Length);
+                        Interlocked.Add(ref _downloadedSize, content.Length);
                         Logger.Info($"File {file.Name} is already downloaded and is correct");
                         return;
                     }
                 }
 
                 Logger.Info($"File {file.Name} is already downloaded but is corrupted, we download it");
+                
+                // We check only the modified chunks
+                toDownloadChunks = [];
+                
+                foreach (var chunk in file.Chunks)
+                {
+                    var chunkHash = GetHashFromHash(chunk.Hash);
+                    
+                    // read the file at the offset and size of the chunk
+                    await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    
+                    if(fs.Length < chunk.Offset + chunk.Size)
+                    {
+                        toDownloadChunks.AddRange(file.Chunks.Where(x => x.Offset >= chunk.Offset));
+                        break;
+                    }
+                    
+                    var buffer = new byte[chunk.Size];
+                    fs.Seek(chunk.Offset, SeekOrigin.Begin);
+                    _ = fs.Read(buffer, 0, buffer.Length);
+
+                    var hash = SHA1.HashData(buffer);
+                    var hashAsString = ByteArrayToHexString(hash);
+
+                    if (hashAsString == chunkHash)
+                        continue;
+                    
+                    if (fileInfo.Length == file.Size)
+                    {
+                        toDownloadChunks.Add(chunk);
+                    }
+                    else
+                    {
+                        // it means what is after is modified or atleast the offset will be different so we can just download everything
+                        toDownloadChunks.AddRange(file.Chunks.Where(x => x.Offset >= chunk.Offset));
+                        break;
+                    }
+                }
             }
 
             if (file.Chunks.Count == 0)
@@ -353,7 +415,7 @@ public class Downloader
 
             var chunks = new Dictionary<BundleT, List<(ChunkT, ChunkT)>>();
 
-            foreach (var chunk in file.Chunks)
+            foreach (var chunk in toDownloadChunks)
             {
                 var (bundle, chunkInBundle) = GetBundle(bundles, chunk);
 
@@ -374,9 +436,8 @@ public class Downloader
 
             foreach (var (bundle, chunk) in chunks)
             {
-                // maybe the range max is 10
-
-                var chunkSize = 90;
+                // I don't want to send a header too big
+                const int chunkSize = 100;
                 var chunkList = chunk.ToList();
 
                 for (var i = 0; i < chunkList.Count; i += chunkSize)
@@ -384,7 +445,6 @@ public class Downloader
                     var c = chunkList.Skip(i).Take(chunkSize);
                     await DownloadChunk(game, bundle, c.Select(x => x.Item1));
                 }
-
             }
         }
         finally
@@ -558,8 +618,9 @@ public class Downloader
 
     private void OnChunkDownloaded(byte[] data)
     {
+        Interlocked.Add(ref _downloadedSize, data.Length);
         Interlocked.Add(ref _waitingBytes, data.Length);
-        Logger.Info($"Downloaded {data.Length} bytes, {_waitingBytes} bytes remaining");
+        //Logger.Info($"Downloaded {data.Length} bytes, {_waitingBytes} bytes remaining");
 
         _waitHandle.Wait(_cancellationTokenSource.Token);
 
@@ -591,7 +652,8 @@ public class Downloader
         fs.Seek(chunk.Offset, SeekOrigin.Begin);
         fs.Write(content);
 
-        Logger.Info($"Saved {content.Length} bytes to {path}");
+        //Logger.Info($"Saved {content.Length} bytes to {path}");
+        Interlocked.Add(ref _installedSize, content.Length);
     }
 
     private static string ByteArrayToHexString(List<sbyte> byteArray)
