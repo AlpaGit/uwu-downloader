@@ -9,10 +9,12 @@ This is not a CLI, it's meant to keep running on a Docker / Server or Windows Se
 ## Configuration
 This tool use a single .env file (or Environment variables) 
 Used keys:
-     WEBHOOK_URL (Discord webhook url)
-     POST_DOWNLOAD (true/false, true if you the tool to start the game after download)
-     FRAGMENTS (csv, a list of fragments to be downloaded (List of Unity: "animations, audio, bones, configuration, data, i18n, maps, picto, skins, win32_x64")
-"win32_x64" is required if you want to start the game
+- WEBHOOK_URL (Discord webhook url)
+- POST_DOWNLOAD (true/false, true if you the tool to start the game after download)
+- FRAGMENTS (csv, a list of fragments to be downloaded
+
+List of fragments for Unity: "animations/audio/bones/configuration/data/i18n/maps/picto/skins/win32_x64"  
+Fragment "win32_x64" is required if you want to start the game
 
 ## TODO: 
 - Check every chunks of a file and only download the modified one, not the whole file
