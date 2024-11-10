@@ -108,16 +108,19 @@ public class Downloader
         
         // extract inside the _game directory
         ZipFile.ExtractToDirectory(bepinexPath, _path, true);
-        
-        Directory.CreateDirectory(Path.Combine(_path, "BepInEx", "plugins"));
-        
-        // we copy every plugins in the plugins folder
-        foreach (var file in Directory.GetFiles("plugins"))
+
+        if (Directory.Exists("plugins"))
         {
-            var dest = Path.Combine(_path, "BepInEx", "plugins", Path.GetFileName(file));
-            System.IO.File.Copy(file, dest, true);
+            Directory.CreateDirectory(Path.Combine(_path, "BepInEx", "plugins"));
+
+            // we copy every plugins in the plugins folder
+            foreach (var file in Directory.GetFiles("plugins"))
+            {
+                var dest = Path.Combine(_path, "BepInEx", "plugins", Path.GetFileName(file));
+                System.IO.File.Copy(file, dest, true);
+            }
         }
-        
+
         await Logger.WebhookInfo($"BepInEx installed");
         
         var startProcess = Process.Start(new ProcessStartInfo
