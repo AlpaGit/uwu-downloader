@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using Google.FlatBuffers;
@@ -34,6 +35,8 @@ public class Downloader
     private readonly Dictionary<string, List<(FileT, ChunkT)>> _chunks = new Dictionary<string, List<(FileT, ChunkT)>>();
     private readonly Dictionary<string, List<FileT>> _files = new Dictionary<string, List<FileT>>();
 
+    private readonly ConcurrentDictionary<string, bool> _downloadedFiles = new ConcurrentDictionary<string, bool>();
+    
     private readonly ManualResetEventSlim _waitHandle = new ManualResetEventSlim(true);
     
     private readonly SemaphoreSlim _maxChunksSemaphore = new SemaphoreSlim(20, 20);
@@ -44,9 +47,11 @@ public class Downloader
     private long _maxSizeToInstall;
     private long _downloadedSize;
     private long _installedSize;
+    
     public async Task DownloadGame(string game, string release, string version, Configuration configuration)
     {
         var fragmentsRaw = configuration.Get("FRAGMENTS");
+        var onDownloadUrl = configuration.Get("ON_DOWNLOAD_URL");
         
         if (!string.IsNullOrEmpty(fragmentsRaw))
         {
@@ -96,6 +101,9 @@ public class Downloader
                 // ignored
             }
         }
+        
+        if(!string.IsNullOrEmpty(onDownloadUrl))
+            await httpClient.PostAsJsonAsync(onDownloadUrl, _downloadedFiles.Keys);
         
         Logger.Info($"{game} installed");
     }
@@ -654,6 +662,8 @@ public class Downloader
 
         //Logger.Info($"Saved {content.Length} bytes to {path}");
         Interlocked.Add(ref _installedSize, content.Length);
+        
+        _downloadedFiles.TryAdd(file.Name, true);
     }
 
     private static string ByteArrayToHexString(List<sbyte> byteArray)

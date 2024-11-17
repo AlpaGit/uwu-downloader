@@ -1,0 +1,6 @@
+﻿services:
+  uwu-downloader:
+    image: uwu-downloader
+    build:
+      context: .
+      dockerfile: uwu-downloader/Dockerfile
